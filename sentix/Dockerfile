@@ -21,9 +21,9 @@ COPY . .
 
 # Create necessary directories
 RUN mkdir -p data outputs logs/alerts
-
-# Run model initialization script
-RUN python init_model.py
+ENV TRANSFORMERS_CACHE=/app/data/hf-cache
+ENV HF_HOME=/app/data/hf-home
+ENV TORCH_HOME=/app/data/torch
 
 # Expose port (Render will set PORT environment variable)
 EXPOSE 8000
@@ -32,5 +32,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:$PORT/health || exit 1
 
-# Start the application
-CMD ["sh", "-c", "uvicorn api.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Start the application (initialize data/model at runtime if missing)
+CMD ["sh", "-c", "if [ ! -f data/sentiment_bars.csv ] || [ ! -f outputs/prob_model.pkl ]; then python init_model.py; fi && uvicorn api.app:app --host 0.0.0.0 --port ${PORT:-8000}"]

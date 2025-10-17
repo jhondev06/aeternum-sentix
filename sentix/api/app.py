@@ -24,8 +24,9 @@ model_id = config['sentiment']['model_id']
 batch_size = config['sentiment']['batch_size']
 device = config['sentiment'].get('device')
 threshold_long = config['signals']['threshold_long']
-api_username = config['api']['auth']['username']
-api_password = config['api']['auth']['password']
+# Allow overriding API credentials via environment variables
+api_username = os.getenv('API_USERNAME', config['api']['auth']['username'])
+api_password = os.getenv('API_PASSWORD', config['api']['auth']['password'])
 
 security = HTTPBasic()
 

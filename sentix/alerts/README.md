@@ -246,29 +246,27 @@ rule = AlertRule(
 ```
 
 ### 3. Multi-Asset Alert
-Create similar rules for different tickers and combine them in your HFT strategy.
+Create similar rules for different tickers and combine them with your external monitoring or analytics strategy.
 
-## Integration with HFT
+## External Integration via Webhooks
 
-### Using the Mock HFT System
+### Using a Local Webhook Receiver
 
-The Sentix project includes a mock HFT system (`mock_hft_system.py`) for testing and demonstration purposes.
+For local testing, you can use a simple webhook receiver (Flask/Node) to accept POST notifications from Sentix alerts.
 
-#### 1. Start the Mock HFT System
+#### 1. Start a Local Webhook Receiver
 
 ```bash
-cd sentix
-python mock_hft_system.py
+# Start a simple local webhook receiver (Flask example)
+pip install flask
+python -c "from flask import Flask, request; app=Flask(__name__);\n@app.post('/hook')\ndef hook(): print('Alert:', request.json); return {'ok': True}\napp.run(port=8080)"
 ```
 
-The mock HFT runs on `http://localhost:8080` with the following endpoints:
+Your local receiver will typically expose `http://localhost:8080` endpoints such as:
+- `POST /hook` - Receive alerts
 - `GET /health` - Health check
-- `POST /trade` - Receive trading signals
-- `GET /stats` - Get system statistics
-- `POST /reset` - Reset system
-- `GET /positions` - Get current positions
 
-#### 2. Configure Webhook for HFT Integration
+#### 2. Configure Webhook for External Integration
 
 ```bash
 # Create webhook configuration
@@ -276,7 +274,7 @@ curl -X POST "http://localhost:8000/alerts/webhooks" \
   -H "Content-Type: application/json" \
   -u "admin:sentix123" \
   -d '{
-    "url": "http://localhost:8080/trade",
+    "url": "http://localhost:8080/hook",
     "enabled": true
   }'
 ```
@@ -298,7 +296,7 @@ curl -X POST "http://localhost:8000/alerts/rules" \
     "actions": [
       {
         "type": "webhook",
-        "url": "http://localhost:8080/trade",
+        "url": "http://localhost:8080/hook",
         "signal_type": "long_signal"
       }
     ],
@@ -320,7 +318,7 @@ curl -X POST "http://localhost:8000/alerts/rules" \
     "actions": [
       {
         "type": "webhook",
-        "url": "http://localhost:8080/trade",
+        "url": "http://localhost:8080/hook",
         "signal_type": "short_signal"
       }
     ],
@@ -329,17 +327,11 @@ curl -X POST "http://localhost:8000/alerts/rules" \
   }'
 ```
 
-#### 4. Monitor HFT System
+#### 4. Monitor the Local Receiver
 
 ```bash
-# Check HFT system stats
-curl http://localhost:8080/stats
-
-# Check current positions
-curl http://localhost:8080/positions
-
-# Reset HFT system for testing
-curl -X POST http://localhost:8080/reset
+# Check health (if implemented)
+curl http://localhost:8080/health
 ```
 
 #### 5. View Alert History
@@ -352,16 +344,16 @@ curl -X GET "http://localhost:8000/alerts/history" -u "admin:sentix123"
 curl -X GET "http://localhost:8000/alerts/history?rule_id=petr_long_signal" -u "admin:sentix123"
 ```
 
-### Integration with Production HFT Systems
+### Integration with External Systems (Production)
 
-1. **Configure Webhooks**: Set up webhook URLs in your HFT system
+1. **Configure Webhooks**: Set up webhook URLs in your external system
 2. **Create Rules**: Define alert conditions based on your strategy
 3. **Monitor**: Use the API to track alert performance
 4. **Adjust**: Modify thresholds based on backtesting results
 
 ### Signal Payload Format
 
-The webhook sends the following payload to your HFT system:
+The webhook sends the following payload to your external system:
 
 ```json
 {
@@ -378,14 +370,14 @@ The webhook sends the following payload to your HFT system:
 }
 ```
 
-Your HFT system should parse the `signal` object and execute trades accordingly.
+Your external system should parse the `signal` object and trigger the appropriate action (notifications, logging, downstream processing).
 
 ## Best Practices
 
 1. **Cooldown Periods**: Set appropriate cooldown to avoid spam
 2. **Threshold Calibration**: Test thresholds with historical data
 3. **Error Handling**: Monitor webhook delivery logs
-4. **Rate Limiting**: Consider rate limits for your HFT system
+4. **Rate Limiting**: Consider rate limits and throughput for your external system or webhook receiver
 5. **Backup Channels**: Use both webhooks and telegram for critical alerts
 
 ## Troubleshooting

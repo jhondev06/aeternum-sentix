@@ -33,7 +33,7 @@ Fornecer uma ferramenta quantitativa que, antes da compra de um ativo, estime a 
 - api/app.py: Endpoints de consulta e alertas.
 - alerts/engine.py, alerts/rule.py, alerts/webhook.py, alerts/logger.py: motor de regras, ações e auditoria.
 - dashboard.py: visualização das séries e estatísticas.
-- mock_hft_system.py: servidor Flask para simulação de execução de trades.
+- alerts/webhook.py: ação de envio para endpoints HTTP (webhooks) para integração externa e monitoramento.
 
 ## Endpoints da API (principais)
 - POST /score_text: dado um texto (e opcionalmente um ticker), retorna prob_up baseada no sentimento FinBERT + componentes pos/neg/neu/score.

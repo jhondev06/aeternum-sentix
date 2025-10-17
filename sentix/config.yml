@@ -1,0 +1,67 @@
+data:
+  languages: ["pt"]
+  min_chars: 120
+  rss_feeds:
+    - "https://www.infomoney.com.br/feed/"
+    - "https://valor.globo.com/rss"
+    - "https://www.bloomberglinea.com.br/feed/"
+    - "https://exame.com/feed/"
+    - "https://www.bcb.gov.br/rss/noticias"
+    - "https://www.cvm.gov.br/rss/noticias"
+    - "https://www.gov.br/economia/pt-br/assuntos/noticias/rss"
+    - "https://www.estadao.com.br/rss/economia.xml"
+    - "https://www.folha.uol.com.br/rss/economia.xml"
+    - "https://g1.globo.com/rss/g1/economia"
+    - "https://www.cnnbrasil.com.br/rss"
+    - "https://www.uol.com.br/rss/economia.xml"
+  twitter:
+    enabled: true
+    api_key: ""
+    api_secret: ""
+    access_token: ""
+    access_token_secret: ""
+    bearer_token: ""
+    max_results: 100
+    hours_back: 24
+  price:
+    symbols: ["PETR4.SA", "VALE3.SA", "ITUB4.SA", "BBDC4.SA", "WEGE3.SA", "MGLU3.SA", "PETR3.SA", "ABEV3.SA", "VIVT3.SA", "JBSS3.SA", "RENT3.SA", "IPCA", "PIB", "SELIC"]
+    interval: "1d"
+    period: "1y"
+
+sentiment:
+  model_id: "ProsusAI/finbert"
+  batch_size: 16
+  device: "cpu"
+
+aggregation:
+  window: "W-MON"          # bucket size (weekly for 6-month analysis)
+  decay_half_life: 6       # time‑decay for recency weighting (numeric)
+
+model:
+  type: "logreg"
+  horizon_bars: 1           # forward horizon in buckets
+  calibration: "isotonic"  # better Brier score
+
+signals:
+  threshold_long: 0.62
+  threshold_short: 0.38
+  cooldown_minutes: 30
+  costs_bps: 10
+
+telegram:
+  enabled: false
+  token: ""
+  chat_id: ""
+
+alerts:
+  enabled: true
+  monitoring_interval: 60  # seconds
+  max_concurrent_webhooks: 10
+  webhook_timeout: 10  # seconds
+  log_retention_days: 30
+  default_cooldown_minutes: 30
+
+api:
+  auth:
+    username: "admin"
+    password: "sentix123"

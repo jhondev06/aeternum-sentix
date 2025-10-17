@@ -1,0 +1,19 @@
+pandas==2.2.2
+numpy>=2.1.0
+scikit-learn==1.5.1
+PyYAML==6.0.1
+feedparser==6.0.10
+langdetect==1.0.9
+yfinance==0.2.40
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+transformers==4.43.3
+torch==2.3.1
+requests==2.32.3
+streamlit==1.35.0
+plotly==5.22.0
+# Added for stability and features used in codebase
+aiohttp==3.9.5
+matplotlib==3.8.4
+Flask==3.0.2
+tweepy==4.14.0

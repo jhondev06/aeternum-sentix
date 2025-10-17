@@ -1,0 +1,16 @@
+PETR4.SA:
+  aliases: ["Petrobras", "PETR4", "B3:PETR4", "Petrobrás"]
+VALE3.SA:
+  aliases: ["Vale", "VALE3", "B3:VALE3", "Vale S.A."]
+ITUB4.SA:
+  aliases: ["Itaú", "ITUB4", "B3:ITUB4", "Itaú Unibanco"]
+BBDC4.SA:
+  aliases: ["Bradesco", "BBDC4", "B3:BBDC4", "Banco Bradesco"]
+WEGE3.SA:
+  aliases: ["Weg", "WEGE3", "B3:WEGE3", "WEG S.A."]
+IPCA:
+  aliases: ["inflação", "IPCA", "inflacao", "índice de preços", "preços ao consumidor", "inflacionária", "deflação", "IPC"]
+PIB:
+  aliases: ["PIB", "Produto Interno Bruto", "GDP", "crescimento econômico", "economia brasileira", "crescimento do PIB", "recessão", "expansão econômica"]
+SELIC:
+  aliases: ["SELIC", "taxa SELIC", "juros", "taxa de juros", "Banco Central", "meta SELIC", "juros básicos", "política monetária"]

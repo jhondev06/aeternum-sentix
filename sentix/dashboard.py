@@ -124,7 +124,7 @@ filtered_df = sentiment_df[
 ]
 
 # Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["📈 Visão Geral", "📊 Análise de Probabilidades", "🔄 Comparações", "📋 Dados"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 Visão Geral", "📊 Análise de Probabilidades", "🔄 Comparações", "✅ Validação", "📋 Dados"])
 
 with tab1:
     st.header("Visão Geral do Painel")
@@ -242,6 +242,141 @@ with tab3:
         fig = px.imshow(corr_matrix, text_auto=True, title='Matriz de Correlação da Probabilidade de Subida',
                         template='plotly_white', color_continuous_scale='RdBu_r')
         st.plotly_chart(fig, use_container_width=True)
+
+with tab5:
+    st.header("✅ Validação do Modelo")
+    st.markdown("Compare as probabilidades previstas com os movimentos reais de preço.")
+    
+    # Select stock for validation
+    validation_stocks = [e for e in entities if e.endswith('.SA')]
+    if validation_stocks:
+        val_ticker = st.selectbox("Selecionar Ativo para Validação", validation_stocks, key='val_ticker')
+        
+        if val_ticker:
+            # Load price data
+            val_price_df = load_price_data(val_ticker, period='1y')
+            val_sent_df = sentiment_df[sentiment_df['ticker'] == val_ticker].copy()
+            
+            if not val_price_df.empty and not val_sent_df.empty:
+                # Merge data
+                val_merged = pd.merge(
+                    val_sent_df, 
+                    val_price_df, 
+                    left_on='bucket_start', 
+                    right_on='Date', 
+                    how='inner'
+                )
+                
+                if not val_merged.empty and 'probability' in val_merged.columns:
+                    # Calculate returns
+                    val_merged = val_merged.sort_values('bucket_start')
+                    val_merged['return_1w'] = val_merged['Close'].pct_change()
+                    val_merged['actual_up'] = (val_merged['return_1w'].shift(-1) > 0).astype(int)
+                    
+                    # Main comparison chart
+                    st.subheader("📊 Probabilidade vs Retorno Real")
+                    
+                    fig = go.Figure()
+                    
+                    # Probability line
+                    fig.add_trace(go.Scatter(
+                        x=val_merged['bucket_start'], 
+                        y=val_merged['probability'],
+                        mode='lines+markers', 
+                        name='Prob. Subida (Previsto)',
+                        line=dict(color='#2E86AB', width=2),
+                        marker=dict(size=6)
+                    ))
+                    
+                    # Actual up/down markers
+                    up_mask = val_merged['actual_up'] == 1
+                    fig.add_trace(go.Scatter(
+                        x=val_merged.loc[up_mask, 'bucket_start'],
+                        y=[1.05] * up_mask.sum(),
+                        mode='markers',
+                        name='Subiu (Real)',
+                        marker=dict(color='green', size=10, symbol='triangle-up')
+                    ))
+                    
+                    down_mask = val_merged['actual_up'] == 0
+                    fig.add_trace(go.Scatter(
+                        x=val_merged.loc[down_mask, 'bucket_start'],
+                        y=[-0.05] * down_mask.sum(),
+                        mode='markers',
+                        name='Desceu (Real)',
+                        marker=dict(color='red', size=10, symbol='triangle-down')
+                    ))
+                    
+                    # Threshold lines
+                    fig.add_hline(y=0.62, line_dash='dash', line_color='green', 
+                                  annotation_text='Threshold Long (62%)')
+                    fig.add_hline(y=0.38, line_dash='dash', line_color='red',
+                                  annotation_text='Threshold Short (38%)')
+                    
+                    fig.update_layout(
+                        title=f'Validação do Modelo para {val_ticker}',
+                        xaxis_title='Data',
+                        yaxis_title='Probabilidade',
+                        yaxis_tickformat='.0%',
+                        template='plotly_white',
+                        height=500,
+                        showlegend=True,
+                        legend=dict(orientation='h', yanchor='bottom', y=1.02)
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Metrics
+                    st.subheader("📈 Métricas de Validação")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    # Calculate accuracy
+                    val_clean = val_merged.dropna(subset=['actual_up'])
+                    if not val_clean.empty:
+                        predicted_up = (val_clean['probability'] > 0.5).astype(int)
+                        accuracy = (predicted_up == val_clean['actual_up']).mean()
+                        
+                        # Precision when predicting up
+                        high_prob = val_clean['probability'] > 0.62
+                        if high_prob.sum() > 0:
+                            precision_high = val_clean.loc[high_prob, 'actual_up'].mean()
+                        else:
+                            precision_high = 0
+                        
+                        # Correlation
+                        corr = val_clean[['probability', 'actual_up']].corr().iloc[0,1]
+                        
+                        with col1:
+                            st.metric("Acurácia Geral", f"{accuracy:.1%}")
+                        with col2:
+                            st.metric("Precisão (prob > 62%)", f"{precision_high:.1%}")
+                        with col3:
+                            st.metric("Correlação", f"{corr:.3f}")
+                        with col4:
+                            st.metric("Amostras", f"{len(val_clean)}")
+                    
+                    # Rolling correlation chart
+                    st.subheader("📉 Correlação Rolling (30 dias)")
+                    
+                    if len(val_merged) > 30:
+                        val_merged['rolling_corr'] = val_merged['probability'].rolling(window=4).corr(
+                            val_merged['Close'].pct_change().shift(-1)
+                        )
+                        
+                        fig_corr = px.line(
+                            val_merged, x='bucket_start', y='rolling_corr',
+                            title='Correlação Rolling: Probabilidade vs Retorno Futuro',
+                            template='plotly_white'
+                        )
+                        fig_corr.add_hline(y=0, line_dash='dash', line_color='gray')
+                        fig_corr.update_layout(height=300, yaxis_title='Correlação')
+                        st.plotly_chart(fig_corr, use_container_width=True)
+                else:
+                    st.warning("Dados insuficientes para validação.")
+            else:
+                st.warning("Não foi possível carregar dados de preço ou sentimento.")
+    else:
+        st.info("Nenhuma ação (.SA) disponível para validação.")
 
 with tab4:
     st.header("Dados Brutos")

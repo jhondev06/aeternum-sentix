@@ -20,12 +20,23 @@ from typing import Dict, Any, Optional
 HF_SPACE_URL = os.environ.get("HF_SPACE_URL", "https://your-username-sentix-finbert.hf.space")
 
 # Initialize Database
+# Initialize Database
 try:
+    # Try absolute import first (local dev)
     from sentix.database import init_database, save_articles
     init_database()
     DB_AVAILABLE = True
+except ImportError:
+    try:
+        # Try relative import (Render deployment)
+        from database import init_database, save_articles
+        init_database()
+        DB_AVAILABLE = True
+    except Exception as e:
+        print(f"Database init failed (relative): {e}")
+        DB_AVAILABLE = False
 except Exception as e:
-    print(f"Database init failed: {e}")
+    print(f"Database init failed (absolute): {e}")
     DB_AVAILABLE = False
 
 # Custom CSS - Cyberpunk / Glassmorphism Theme
@@ -56,11 +67,14 @@ st.markdown("""
     @keyframes breathe {
         0% { 
             transform: scale(1); 
-            filter: brightness(0.8) hue-rotate(0deg); 
+            filter: brightness(0.6) hue-rotate(0deg); 
+        }
+        50% {
+             filter: brightness(1.3) hue-rotate(15deg); 
         }
         100% { 
-            transform: scale(1.05); 
-            filter: brightness(1.1) hue-rotate(10deg); 
+            transform: scale(1.15); 
+            filter: brightness(0.6) hue-rotate(0deg); 
         }
     }
 
@@ -276,13 +290,23 @@ with tab1:
     col1, col2 = st.columns([2, 1])
     
     with col1:
+        # Check for auto-fill from examples
+        default_text = st.session_state.get('example_text', "")
+        
         text_input = st.text_area(
             "Digite ou cole uma notícia financeira:",
+            value=default_text,
             height=150,
             placeholder="Ex: Petrobras anuncia lucro recorde no terceiro trimestre..."
         )
         
-        if st.button("🔍 Analisar Sentimento", type="primary"):
+        # Check for auto-run trigger
+        auto_run = st.session_state.get('run_analysis', False)
+        
+        if st.button("🔍 Analisar Sentimento", type="primary") or (auto_run and text_input):
+            # Reset trigger
+            st.session_state['run_analysis'] = False
+            
             if text_input.strip():
                 with st.spinner("Analisando..."):
                     result = analyze_sentiment_hf(text_input)
@@ -312,6 +336,7 @@ with tab1:
         for ex in examples:
             if st.button(ex, key=ex):
                 st.session_state['example_text'] = ex
+                st.session_state['run_analysis'] = True
                 st.rerun()
 
 # =============================================================================

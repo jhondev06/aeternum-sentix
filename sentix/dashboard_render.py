@@ -19,6 +19,15 @@ from typing import Dict, Any, Optional
 # HuggingFace Space URL
 HF_SPACE_URL = os.environ.get("HF_SPACE_URL", "https://your-username-sentix-finbert.hf.space")
 
+# Initialize Database
+try:
+    from sentix.database import init_database, save_articles
+    init_database()
+    DB_AVAILABLE = True
+except Exception as e:
+    print(f"Database init failed: {e}")
+    DB_AVAILABLE = False
+
 # Page config
 st.set_page_config(
     page_title="Sentix - Dashboard de Sentimento",
@@ -45,35 +54,40 @@ st.markdown("""
 
 
 # =============================================================================
-# HuggingFace API Client
+# HuggingFace API Client & Persistence
 # =============================================================================
 
 def analyze_sentiment_hf(text: str) -> Dict[str, Any]:
     """
-    Call HuggingFace Space API for sentiment analysis.
+    Call HuggingFace Space API for sentiment analysis and save to DB.
     """
+    result = {}
+    error_msg = ""
+    
     try:
         # Use Gradio client
         from gradio_client import Client
         
         client = Client(HF_SPACE_URL)
-        result = client.predict(
+        api_result = client.predict(
             text=text,
             api_name="/predict"
         )
         
         # Result is (probabilities, label, score)
-        probs, label, score = result
+        probs, label, score = api_result
         
-        return {
+        result = {
             "success": True,
             "label": label,
-            "score": score,
-            "probabilities": probs
+            "score": float(score),
+            "probabilities": probs,
+            "source": "api"
         }
         
     except Exception as e:
-        st.warning(f"⚠️ API não disponível. Usando modo demo.")
+        error_msg = str(e)
+        st.warning(f"⚠️ API Info: {e}")
         
         # Fallback: simple keyword-based sentiment
         positive_words = ['alta', 'lucro', 'crescimento', 'sobe', 'positivo', 'recorde']
@@ -83,12 +97,58 @@ def analyze_sentiment_hf(text: str) -> Dict[str, Any]:
         pos_count = sum(1 for w in positive_words if w in text_lower)
         neg_count = sum(1 for w in negative_words if w in text_lower)
         
+        fallback_probs = {"Positivo": 0.33, "Neutro": 0.34, "Negativo": 0.33}
+        fallback_label = "Neutro ➖"
+        fallback_score = 0.0
+        
         if pos_count > neg_count:
-            return {"success": True, "label": "Positivo 📈", "score": 0.5, "probabilities": {"Positivo": 0.6, "Neutro": 0.3, "Negativo": 0.1}}
+            fallback_label, fallback_score = "Positivo 📈", 0.5
+            fallback_probs = {"Positivo": 0.6, "Neutro": 0.3, "Negativo": 0.1}
         elif neg_count > pos_count:
-            return {"success": True, "label": "Negativo 📉", "score": -0.5, "probabilities": {"Positivo": 0.1, "Neutro": 0.3, "Negativo": 0.6}}
-        else:
-            return {"success": True, "label": "Neutro ➖", "score": 0.0, "probabilities": {"Positivo": 0.33, "Neutro": 0.34, "Negativo": 0.33}}
+            fallback_label, fallback_score = "Negativo 📉", -0.5
+            fallback_probs = {"Positivo": 0.1, "Neutro": 0.3, "Negativo": 0.6}
+            
+        result = {
+            "success": True, # Still assume success for UI 
+            "label": fallback_label,
+            "score": fallback_score,
+            "probabilities": fallback_probs,
+            "source": "fallback",
+            "error": error_msg
+        }
+
+    # Save to Database if available
+    if DB_AVAILABLE:
+        try:
+            # Create a simple unique ID based on timestamp
+            article_id = f"manual_{int(datetime.now().timestamp())}"
+            
+            # Map probabilities to flat columns
+            p = result["probabilities"]
+            
+            df_new = pd.DataFrame([{
+                "id": article_id,
+                "ticker": "MANUAL", # Tag as manual entry
+                "source": "dashboard_manual",
+                "published_at": datetime.utcnow().isoformat(),
+                "title": text[:50] + "...",
+                "body": text,
+                "url": "manual_entry",
+                "lang": "pt",
+                "pos": float(p.get("Positivo", 0)),
+                "neg": float(p.get("Negativo", 0)),
+                "neu": float(p.get("Neutro", 0)),
+                "score": result["score"]
+            }])
+            
+            save_articles(df_new)
+            st.toast("✅ Salvo no Banco de Dados!")
+            
+        except Exception as e:
+            print(f"Failed to save to DB: {e}")
+            st.error(f"Erro ao salvar no banco: {e}")
+
+    return result
 
 
 # =============================================================================

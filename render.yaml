@@ -1,15 +1,45 @@
+# Render Blueprint - Sentix Dashboard
+# Deploy configuration for render.com
+
 services:
+  # ==========================================================================
+  # Streamlit Dashboard (Free Tier Compatible)
+  # ==========================================================================
+  - type: web
+    name: sentix-dashboard
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: sentix
+    buildCommand: pip install -r requirements-render.txt
+    startCommand: streamlit run dashboard_render.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.4"
+      - key: HF_SPACE_URL
+        value: "https://your-username-sentix-finbert.hf.space"
+      - key: SENTIX_ENV
+        value: "production"
+
+  # ==========================================================================
+  # FastAPI Light (Optional - Free Tier)
+  # ==========================================================================
   - type: web
     name: sentix-api
-    runtime: docker
-    dockerfilePath: Dockerfile
-    envVars:
-      - key: PORT
-        value: 8000
-      - key: PYTHONUNBUFFERED
-        value: 1
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: sentix
+    buildCommand: pip install -r requirements-render.txt
+    startCommand: uvicorn api.app_light:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
-    disk:
-      name: sentix-data
-      mountPath: /app/data
-      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.4"
+      - key: HF_SPACE_URL
+        value: "https://your-username-sentix-finbert.hf.space"
+      - key: SENTIX_ENV
+        value: "production"

@@ -20,24 +20,25 @@ from typing import Dict, Any, Optional
 HF_SPACE_URL = os.environ.get("HF_SPACE_URL", "https://your-username-sentix-finbert.hf.space")
 
 # Initialize Database
-# Initialize Database
 try:
     # Try absolute import first (local dev)
-    from sentix.database import init_database, save_articles
+    from sentix.database import init_database, save_articles, load_articles
     init_database()
     DB_AVAILABLE = True
 except ImportError:
     try:
         # Try relative import (Render deployment)
-        from database import init_database, save_articles
+        from database import init_database, save_articles, load_articles
         init_database()
         DB_AVAILABLE = True
     except Exception as e:
         print(f"Database init failed (relative): {e}")
         DB_AVAILABLE = False
+        load_articles = None
 except Exception as e:
     print(f"Database init failed (absolute): {e}")
     DB_AVAILABLE = False
+    load_articles = None
 
 # Custom CSS - Cyberpunk / Glassmorphism Theme
 st.markdown("""
@@ -240,12 +241,45 @@ def analyze_sentiment_hf(text: str) -> Dict[str, Any]:
 
 
 # =============================================================================
-# Demo Data
+# Data Loading (Real or Demo)
 # =============================================================================
 
-@st.cache_data
+import numpy as np
+
+@st.cache_data(ttl=60)  # Cache for 60 seconds
+def load_real_data():
+    """Load real sentiment data from Supabase."""
+    if not DB_AVAILABLE or load_articles is None:
+        return None
+    
+    try:
+        df = load_articles(limit=500)
+        if df.empty:
+            return None
+        
+        # Ensure date column is datetime
+        df['date'] = pd.to_datetime(df['published_at']).dt.date
+        
+        # Calculate probability from pos score (0-1 range)
+        df['probability'] = df['pos'].fillna(0.5)
+        df['sentiment_score'] = df['score'].fillna(0)
+        
+        # Group by date and ticker for charts
+        grouped = df.groupby(['date', 'ticker']).agg({
+            'sentiment_score': 'mean',
+            'probability': 'mean',
+            'id': 'count'
+        }).reset_index()
+        grouped.rename(columns={'id': 'article_count'}, inplace=True)
+        
+        return grouped
+    except Exception as e:
+        print(f"Error loading real data: {e}")
+        return None
+
+
 def load_demo_data():
-    """Load demo sentiment data."""
+    """Load demo sentiment data (fallback)."""
     dates = pd.date_range(end=datetime.now(), periods=30, freq='D')
     
     data = {
@@ -265,7 +299,12 @@ def load_demo_data():
     return pd.DataFrame(data)
 
 
-import numpy as np
+def get_dashboard_data():
+    """Get real data if available, otherwise demo data."""
+    real_data = load_real_data()
+    if real_data is not None and not real_data.empty:
+        return real_data, True  # (data, is_real)
+    return load_demo_data(), False
 
 
 # =============================================================================
@@ -345,8 +384,14 @@ with tab1:
 with tab2:
     st.header("Dashboard de Probabilidades")
     
-    # Load demo data
-    df = load_demo_data()
+    # Load data (real or demo)
+    df, is_real_data = get_dashboard_data()
+    
+    # Show data source indicator
+    if is_real_data:
+        st.success("📊 Exibindo dados REAIS do Supabase")
+    else:
+        st.info("📊 Exibindo dados de demonstração (analise textos para popular o banco)")
     
     # Filters
     col1, col2 = st.columns(2)
@@ -354,7 +399,7 @@ with tab2:
         selected_tickers = st.multiselect(
             "Selecionar Ativos",
             df['ticker'].unique(),
-            default=df['ticker'].unique()
+            default=list(df['ticker'].unique())
         )
     
     # Filter data

@@ -1,0 +1,114 @@
+# Sentix - Docker Compose Configuration
+# Full stack: API, Dashboard, Scheduler, Redis
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # FastAPI Backend
+  # ==========================================================================
+  api:
+    build:
+      context: ./sentix
+      dockerfile: Dockerfile
+    container_name: sentix-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SENTIX_ENV=production
+      - DATABASE_PATH=/app/data/sentix.db
+    volumes:
+      - ./sentix/data:/app/data
+      - ./sentix/outputs:/app/outputs
+      - ./sentix/config.yml:/app/config.yml:ro
+      - ./sentix/tickers.yml:/app/tickers.yml:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - sentix-network
+
+  # ==========================================================================
+  # Streamlit Dashboard
+  # ==========================================================================
+  dashboard:
+    build:
+      context: ./sentix
+      dockerfile: Dockerfile.dashboard
+    container_name: sentix-dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./sentix/data:/app/data:ro
+      - ./sentix/outputs:/app/outputs:ro
+      - ./sentix/config.yml:/app/config.yml:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - sentix-network
+
+  # ==========================================================================
+  # Background Scheduler
+  # ==========================================================================
+  scheduler:
+    build:
+      context: ./sentix
+      dockerfile: Dockerfile
+    container_name: sentix-scheduler
+    command: python scheduler.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SENTIX_ENV=production
+    volumes:
+      - ./sentix/data:/app/data
+      - ./sentix/outputs:/app/outputs
+      - ./sentix/config.yml:/app/config.yml:ro
+      - ./sentix/tickers.yml:/app/tickers.yml:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - sentix-network
+
+  # ==========================================================================
+  # Redis Cache
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: sentix-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - sentix-network
+
+# ==========================================================================
+# Volumes
+# ==========================================================================
+volumes:
+  redis-data:
+    driver: local
+
+# ==========================================================================
+# Networks
+# ==========================================================================
+networks:
+  sentix-network:
+    driver: bridge

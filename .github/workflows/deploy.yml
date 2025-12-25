@@ -1,0 +1,75 @@
+# Deploy workflow for Sentix
+# Triggers on release or manual dispatch
+
+name: Deploy
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  DOCKER_REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  deploy:
+    name: Deploy to ${{ github.event.inputs.environment || 'production' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Log deployment info
+        run: |
+          echo "Deploying to: ${{ github.event.inputs.environment || 'production' }}"
+          echo "Triggered by: ${{ github.event_name }}"
+          echo "Commit SHA: ${{ github.sha }}"
+      
+      # SSH Deploy to VPS
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/sentix
+            
+            # Pull latest images
+            docker compose pull
+            
+            # Restart services
+            docker compose up -d --force-recreate
+            
+            # Clean old images
+            docker image prune -f
+            
+            # Health check
+            sleep 10
+            curl -f http://localhost:8000/health || exit 1
+            
+            echo "Deployment complete!"
+      
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "✅ Deployment successful!"
+          echo "Environment: ${{ github.event.inputs.environment || 'production' }}"
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed!"
+          exit 1

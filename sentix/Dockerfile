@@ -1,36 +1,55 @@
-# Use Python 3.11 slim image
-FROM python:3.11-slim
+# Sentix API Dockerfile
+# Multi-stage build for optimized image
 
-# Set working directory
+# ==========================================================================
+# Stage 1: Base Python image with dependencies
+# ==========================================================================
+FROM python:3.11-slim as base
+
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching (explicit path from repo root)
-COPY sentix/requirements.txt .
-
-# Install Python dependencies
+# Copy requirements and install dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code (copy only sentix/ subdir)
-COPY sentix/ .
+# ==========================================================================
+# Stage 2: Production image
+# ==========================================================================
+FROM python:3.11-slim as production
 
-# Create necessary directories
-RUN mkdir -p data outputs logs/alerts
-ENV TRANSFORMERS_CACHE=/app/data/hf-cache
-ENV HF_HOME=/app/data/hf-home
-ENV TORCH_HOME=/app/data/torch
+WORKDIR /app
 
-# Expose port (Render will set PORT environment variable)
+# Copy installed packages from base
+COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=base /usr/local/bin /usr/local/bin
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1000 sentix
+RUN mkdir -p /app/data /app/outputs /app/logs && chown -R sentix:sentix /app
+
+# Copy application code
+COPY --chown=sentix:sentix . .
+
+# Switch to non-root user
+USER sentix
+
+# Expose port
 EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:$PORT/health || exit 1
+    CMD curl -f http://localhost:8000/health || exit 1
 
-# Start the application (initialize data/model at runtime if missing)
-CMD ["sh", "-c", "if [ ! -f data/sentiment_bars.csv ] || [ ! -f outputs/prob_model.pkl ]; then python init_model.py; fi && uvicorn api.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Default command: run API
+CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000"]

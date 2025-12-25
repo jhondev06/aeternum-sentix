@@ -28,27 +28,78 @@ except Exception as e:
     print(f"Database init failed: {e}")
     DB_AVAILABLE = False
 
-# Page config
-st.set_page_config(
-    page_title="Sentix - Dashboard de Sentimento",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Custom CSS
+# Custom CSS - Cyberpunk / Glassmorphism Theme
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 2rem;
+    /* Import Google Font */
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500;700&display=swap');
+
+    /* Background Image */
+    .stApp {
+        background-image: url("https://raw.githubusercontent.com/jhondev06/aeternum-sentix/main/sentix/assets/bg.png");
+        background-attachment: fixed;
+        background-size: cover;
     }
-    .sentiment-positive { color: #28a745; font-weight: bold; }
-    .sentiment-negative { color: #dc3545; font-weight: bold; }
-    .sentiment-neutral { color: #6c757d; font-weight: bold; }
+
+    /* Glassmorphism Containers */
+    .stMarkdown, .stDataFrame, .stPlotlyChart, div[data-testid="stMetric"], .stTextInput > div > div {
+        background: rgba(16, 20, 30, 0.75);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(0, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 15px;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+    }
+    
+    /* Input Field Special Style */
+    .stTextInput > div > div > input {
+        color: #00ffff !important;
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 1.2rem;
+    }
+
+    /* Typography - Neon Headers */
+    h1, h2, h3 {
+        font-family: 'Orbitron', sans-serif !important;
+        color: #fff !important;
+        text-shadow: 0 0 10px rgba(0, 255, 255, 0.7), 0 0 20px rgba(0, 255, 255, 0.5);
+        letter-spacing: 2px;
+    }
+    
+    /* Custom Button - Cyberpunk Style */
+    div.stButton > button {
+        background: linear-gradient(45deg, #0b3d91, #00d4ff);
+        color: white;
+        font-family: 'Orbitron', sans-serif;
+        border: none;
+        border-radius: 5px;
+        padding: 0.5rem 2rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 0 15px rgba(0, 212, 255, 0.5);
+        text-transform: uppercase;
+    }
+    div.stButton > button:hover {
+        background: linear-gradient(45deg, #00d4ff, #0b3d91);
+        transform: scale(1.05);
+        box-shadow: 0 0 25px rgba(0, 212, 255, 0.8);
+    }
+
+    /* Metric Values - Neon Green/Red */
+    div[data-testid="stMetricValue"] {
+        font-family: 'Orbitron', sans-serif;
+        text-shadow: 0 0 10px currentColor;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+        width: 10px;
+        background: #0a0e17;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #00d4ff;
+        border-radius: 5px;
+    }
 </style>
 """, unsafe_allow_html=True)
 

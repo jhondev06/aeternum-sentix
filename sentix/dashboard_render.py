@@ -34,11 +34,34 @@ st.markdown("""
     /* Import Google Font */
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500;700&display=swap');
 
-    /* Background Image */
+    /* Background Image with Animation */
     .stApp {
+        background: transparent;
+    }
+    
+    .stApp::before {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
         background-image: url("https://raw.githubusercontent.com/jhondev06/aeternum-sentix/main/sentix/assets/bg.png");
-        background-attachment: fixed;
         background-size: cover;
+        background-position: center;
+        z-index: -1;
+        animation: breathe 20s infinite alternate ease-in-out;
+    }
+
+    @keyframes breathe {
+        0% { 
+            transform: scale(1); 
+            filter: brightness(0.8) hue-rotate(0deg); 
+        }
+        100% { 
+            transform: scale(1.05); 
+            filter: brightness(1.1) hue-rotate(10deg); 
+        }
     }
 
     /* Glassmorphism Containers */

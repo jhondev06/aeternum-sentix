@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Optional
@@ -12,8 +12,29 @@ from alerts.rule import AlertRule
 from alerts.webhook import WebhookConfig
 import os
 import secrets
+import sentry_sdk
+from api.auth import router as auth_router, get_current_active_user, User
+
+# Initialize Sentry
+sentry_sdk.init(
+    dsn="", # Enter Sentry DSN here
+    traces_sample_rate=1.0,
+    profiles_sample_rate=1.0,
+)
 
 app = FastAPI()
+app.include_router(auth_router, tags=["auth"])
+
+from fastapi.middleware.cors import CORSMiddleware
+origins = ["http://localhost:3000"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Load config
@@ -28,14 +49,7 @@ threshold_long = config['signals']['threshold_long']
 api_username = os.getenv('API_USERNAME', config['api']['auth']['username'])
 api_password = os.getenv('API_PASSWORD', config['api']['auth']['password'])
 
-security = HTTPBasic()
-
-def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, api_username)
-    correct_password = secrets.compare_digest(credentials.password, api_password)
-    if not (correct_username and correct_password):
-        raise HTTPException(status_code=401, detail="Incorrect username or password")
-    return credentials.username
+# Removed Basic Auth setup
 
 # Load FinBERT
 finbert = FinBertSentiment(model_id, batch_size, device)
@@ -69,7 +83,7 @@ class WebhookRequest(BaseModel):
     enabled: bool = True
 
 @app.post("/score_text")
-def score_text(request: ScoreTextRequest, username: str = Depends(authenticate)):
+def score_text(request: ScoreTextRequest, current_user: User = Depends(get_current_active_user)):
     text = request.text
     if not text.strip():
         return {"prob_up": 0.5, "components": {"pos": 0, "neg": 0, "neu": 1, "score": 0}}
@@ -103,7 +117,7 @@ def score_text(request: ScoreTextRequest, username: str = Depends(authenticate))
     }
 
 @app.get("/signal")
-def get_signal(ticker: str, threshold_long: float = None, threshold_short: float = None, username: str = Depends(authenticate)):
+def get_signal(ticker: str, threshold_long: float = None, threshold_short: float = None, current_user: User = Depends(get_current_active_user)):
     if threshold_long is None:
         threshold_long = config['signals']['threshold_long']
     if threshold_short is None:
@@ -144,7 +158,7 @@ def get_signal(ticker: str, threshold_long: float = None, threshold_short: float
 
 
 @app.get("/probabilities")
-def get_probabilities(ticker: str, username: str = Depends(authenticate)):
+def get_probabilities(ticker: str, current_user: User = Depends(get_current_active_user)):
     """Consultar probabilidades quantificadas de subir/descer para um ticker."""
     if not os.path.exists('data/sentiment_bars.csv'):
         raise HTTPException(status_code=404, detail="Sentiment bars not found")
@@ -202,7 +216,7 @@ def get_probabilities(ticker: str, username: str = Depends(authenticate)):
     }
 
 @app.get("/realtime")
-def get_realtime(ticker: str = None, username: str = Depends(authenticate)):
+def get_realtime(ticker: str = None, current_user: User = Depends(get_current_active_user)):
     if not os.path.exists('data/sentiment_bars.csv'):
         raise HTTPException(status_code=404, detail="Sentiment bars not found")
 
@@ -232,7 +246,7 @@ def get_realtime(ticker: str = None, username: str = Depends(authenticate)):
     return {"data": result}
 
 @app.get("/historical")
-def get_historical(ticker: str = None, start_date: str = None, end_date: str = None, username: str = Depends(authenticate)):
+def get_historical(ticker: str = None, start_date: str = None, end_date: str = None, current_user: User = Depends(get_current_active_user)):
     if not os.path.exists('data/sentiment_bars.csv'):
         raise HTTPException(status_code=404, detail="Sentiment bars not found")
 
@@ -271,7 +285,7 @@ def get_historical(ticker: str = None, start_date: str = None, end_date: str = N
 # Alert Management Endpoints
 
 @app.post("/alerts/rules")
-def create_alert_rule(request: AlertRuleRequest, username: str = Depends(authenticate)):
+def create_alert_rule(request: AlertRuleRequest, current_user: User = Depends(get_current_active_user)):
     """Create a new alert rule"""
     try:
         rule = AlertRule(
@@ -289,12 +303,12 @@ def create_alert_rule(request: AlertRuleRequest, username: str = Depends(authent
         raise HTTPException(status_code=400, detail=f"Error creating alert rule: {str(e)}")
 
 @app.get("/alerts/rules")
-def list_alert_rules(username: str = Depends(authenticate)):
+def list_alert_rules(current_user: User = Depends(get_current_active_user)):
     """List all alert rules"""
     return {"rules": alert_engine.list_rules()}
 
 @app.get("/alerts/rules/{rule_id}")
-def get_alert_rule(rule_id: str, username: str = Depends(authenticate)):
+def get_alert_rule(rule_id: str, current_user: User = Depends(get_current_active_user)):
     """Get a specific alert rule"""
     rule = alert_engine.get_rule(rule_id)
     if not rule:
@@ -302,7 +316,7 @@ def get_alert_rule(rule_id: str, username: str = Depends(authenticate)):
     return rule.to_dict()
 
 @app.put("/alerts/rules/{rule_id}")
-def update_alert_rule(rule_id: str, request: AlertRuleRequest, username: str = Depends(authenticate)):
+def update_alert_rule(rule_id: str, request: AlertRuleRequest, current_user: User = Depends(get_current_active_user)):
     """Update an alert rule"""
     try:
         rule = AlertRule(
@@ -320,7 +334,7 @@ def update_alert_rule(rule_id: str, request: AlertRuleRequest, username: str = D
         raise HTTPException(status_code=400, detail=f"Error updating alert rule: {str(e)}")
 
 @app.delete("/alerts/rules/{rule_id}")
-def delete_alert_rule(rule_id: str, username: str = Depends(authenticate)):
+def delete_alert_rule(rule_id: str, current_user: User = Depends(get_current_active_user)):
     """Delete an alert rule"""
     if alert_engine.remove_rule(rule_id):
         return {"message": "Alert rule deleted successfully"}
@@ -330,7 +344,7 @@ def delete_alert_rule(rule_id: str, username: str = Depends(authenticate)):
 # Webhook Management Endpoints
 
 @app.post("/alerts/webhooks")
-def create_webhook(request: WebhookRequest, username: str = Depends(authenticate)):
+def create_webhook(request: WebhookRequest, current_user: User = Depends(get_current_active_user)):
     """Create a new webhook configuration"""
     try:
         webhook = WebhookConfig(
@@ -344,12 +358,12 @@ def create_webhook(request: WebhookRequest, username: str = Depends(authenticate
         raise HTTPException(status_code=400, detail=f"Error creating webhook: {str(e)}")
 
 @app.get("/alerts/webhooks")
-def list_webhooks(username: str = Depends(authenticate)):
+def list_webhooks(current_user: User = Depends(get_current_active_user)):
     """List all webhook configurations"""
     return {"webhooks": alert_engine.list_webhooks()}
 
 @app.delete("/alerts/webhooks/{webhook_url:path}")
-def delete_webhook(webhook_url: str, username: str = Depends(authenticate)):
+def delete_webhook(webhook_url: str, current_user: User = Depends(get_current_active_user)):
     """Delete a webhook configuration"""
     if alert_engine.remove_webhook(webhook_url):
         return {"message": "Webhook deleted successfully"}
@@ -359,7 +373,7 @@ def delete_webhook(webhook_url: str, username: str = Depends(authenticate)):
 # Alert Monitoring Endpoints
 
 @app.post("/alerts/process")
-def process_alerts(username: str = Depends(authenticate)):
+def process_alerts(current_user: User = Depends(get_current_active_user)):
     """Manually process alerts (for testing)"""
     if not os.path.exists('data/sentiment_bars.csv'):
         raise HTTPException(status_code=404, detail="Sentiment bars not found")
@@ -377,7 +391,7 @@ def process_alerts(username: str = Depends(authenticate)):
     }
 
 @app.get("/alerts/stats")
-def get_alert_stats(username: str = Depends(authenticate)):
+def get_alert_stats(current_user: User = Depends(get_current_active_user)):
     """Get alert system statistics"""
     return alert_engine.get_stats()
 
@@ -386,7 +400,7 @@ def health_check():
     """Health check endpoint for cloud deployment"""
     return {"status": "healthy", "version": "1.0.0"}
 @app.get("/alerts/history")
-def get_alert_history(rule_id: str = None, days: int = 7, username: str = Depends(authenticate)):
+def get_alert_history(rule_id: str = None, days: int = 7, current_user: User = Depends(get_current_active_user)):
     """Get alert history"""
     df = alert_engine.logger.get_alert_history(rule_id, days)
     return {

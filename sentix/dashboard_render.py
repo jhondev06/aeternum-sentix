@@ -143,25 +143,8 @@ st.markdown("""
 
 
 # =============================================================================
-# Sentiment Analysis (Local - Keyword Based)
+# Sentiment Analysis (FinBERT via HuggingFace Space)
 # =============================================================================
-
-# Dicionário robusto de palavras-chave financeiras
-POSITIVE_KEYWORDS = [
-    'alta', 'lucro', 'crescimento', 'sobe', 'positivo', 'recorde', 'valorização',
-    'ganho', 'avanço', 'otimismo', 'recuperação', 'forte', 'supera', 'bom',
-    'dividendo', 'extraordinário', 'expansão', 'sucesso', 'melhora', 'dispara',
-    'boom', 'aquecido', 'favorável', 'benefício', 'oportunidade', 'aumento',
-    'alta histórica', 'máxima', 'excelente', 'robusto', 'sólido'
-]
-
-NEGATIVE_KEYWORDS = [
-    'queda', 'perda', 'crise', 'desaba', 'negativo', 'risco', 'baixa',
-    'prejuízo', 'retração', 'pessimismo', 'fraco', 'problema', 'dívida',
-    'inflação', 'juros', 'recessão', 'colapso', 'declínio', 'falência',
-    'default', 'calote', 'escândalo', 'investigação', 'multa', 'tombo',
-    'derrocada', 'despenca', 'afunda', 'mínima', 'redução', 'corte'
-]
 
 # Lista de Ativos Brasileiros Populares para Recomendação
 RECOMMENDED_ASSETS = {
@@ -189,84 +172,93 @@ RECOMMENDED_ASSETS = {
     ]
 }
 
-def analyze_sentiment_local(text: str, ticker: str = "MANUAL") -> Dict[str, Any]:
+def analyze_sentiment_finbert(text: str, ticker: str) -> Dict[str, Any]:
     """
-    Análise de sentimento local usando keywords financeiros.
-    Funciona 100% offline, sem depender de APIs externas.
+    Análise de sentimento usando FinBERT via HuggingFace Space.
+    Usa o modelo real de Machine Learning para inferência.
     """
-    text_lower = text.lower()
-    
-    # Contar ocorrências
-    pos_count = sum(1 for word in POSITIVE_KEYWORDS if word in text_lower)
-    neg_count = sum(1 for word in NEGATIVE_KEYWORDS if word in text_lower)
-    total = pos_count + neg_count + 1  # +1 para evitar divisão por zero
-    
-    # Calcular probabilidades
-    pos_prob = min(0.95, pos_count / total + 0.1) if pos_count > 0 else 0.15
-    neg_prob = min(0.95, neg_count / total + 0.1) if neg_count > 0 else 0.15
-    neu_prob = max(0.05, 1 - pos_prob - neg_prob)
-    
-    # Normalizar para somar 1
-    total_prob = pos_prob + neg_prob + neu_prob
-    pos_prob /= total_prob
-    neg_prob /= total_prob
-    neu_prob /= total_prob
-    
-    # Determinar label
-    if pos_count > neg_count:
-        label = "Positivo 📈"
-        score = pos_prob
-    elif neg_count > pos_count:
-        label = "Negativo 📉"
-        score = -neg_prob
-    else:
-        label = "Neutro ➖"
-        score = 0.0
-    
-    result = {
-        "success": True,
-        "label": label,
-        "score": round(score, 4),
-        "probabilities": {
-            "Positivo": round(pos_prob, 4),
-            "Negativo": round(neg_prob, 4),
-            "Neutro": round(neu_prob, 4)
-        },
-        "source": "local_analysis",
-        "keywords_found": {
-            "positive": pos_count,
-            "negative": neg_count
+    try:
+        from gradio_client import Client
+        
+        # Conectar ao HuggingFace Space
+        client = Client("bitek/sentix-finbert")
+        
+        # Chamar a API do modelo
+        result = client.predict(
+            text=text,
+            api_name="/predict"
+        )
+        
+        # Resultado vem como: (probabilities_dict, label_str, score_float)
+        probs_raw, label_raw, score_raw = result
+        
+        # Mapear probabilidades para formato esperado
+        probs = {
+            "Positivo": round(probs_raw.get("Positivo", probs_raw.get("positive", 0)), 4),
+            "Negativo": round(probs_raw.get("Negativo", probs_raw.get("negative", 0)), 4),
+            "Neutro": round(probs_raw.get("Neutro", probs_raw.get("neutral", 0)), 4)
         }
-    }
+        
+        # Normalizar label
+        label = label_raw
+        if "Positivo" in str(label_raw) or "positive" in str(label_raw).lower():
+            label = "Positivo 📈"
+        elif "Negativo" in str(label_raw) or "negative" in str(label_raw).lower():
+            label = "Negativo 📉"
+        else:
+            label = "Neutro ➖"
+        
+        # Score
+        score = float(score_raw) if score_raw else 0.0
+        
+        analysis_result = {
+            "success": True,
+            "label": label,
+            "score": round(score, 4),
+            "probabilities": probs,
+            "source": "finbert_hf",
+            "model": "bitek/sentix-finbert"
+        }
+        
+    except Exception as e:
+        st.error(f"❌ Erro ao conectar com FinBERT: {e}")
+        return {
+            "success": False,
+            "label": "Erro",
+            "score": 0.0,
+            "probabilities": {"Positivo": 0, "Negativo": 0, "Neutro": 0},
+            "source": "error",
+            "error": str(e)
+        }
     
     # Save to Database if available
-    if DB_AVAILABLE:
+    if DB_AVAILABLE and analysis_result["success"]:
         try:
-            article_id = f"manual_{int(datetime.now().timestamp())}"
-            p = result["probabilities"]
+            article_id = f"finbert_{int(datetime.now().timestamp())}"
+            p = analysis_result["probabilities"]
             
             df_new = pd.DataFrame([{
                 "id": article_id,
                 "ticker": ticker,
-                "source": "dashboard_manual",
+                "source": "finbert_api",
                 "published_at": datetime.utcnow().isoformat(),
                 "title": text[:50] + "..." if len(text) > 50 else text,
                 "body": text,
-                "url": "manual_entry",
+                "url": "finbert_analysis",
                 "lang": "pt",
                 "pos": float(p.get("Positivo", 0)),
                 "neg": float(p.get("Negativo", 0)),
                 "neu": float(p.get("Neutro", 0)),
-                "score": result["score"]
+                "score": analysis_result["score"]
             }])
             
             save_articles(df_new)
-            st.toast("✅ Análise salva no banco de dados!")
+            st.toast("✅ Análise FinBERT salva no banco de dados!")
             
         except Exception as e:
             print(f"Failed to save to DB: {e}")
     
-    return result
+    return analysis_result
 
 
 # =============================================================================
@@ -441,11 +433,11 @@ with tab1:
             elif not text_input.strip():
                 st.warning("⚠️ Digite ou cole uma notícia para analisar.")
             else:
-                with st.spinner(f"Analisando sentimento para {selected_ticker}..."):
-                    result = analyze_sentiment_local(text_input, selected_ticker)
+                with st.spinner(f"🧠 Analisando com FinBERT para {selected_ticker}..."):
+                    result = analyze_sentiment_finbert(text_input, selected_ticker)
                     
                     if result["success"]:
-                        st.markdown("### 📊 Resultado da Análise")
+                        st.markdown("### 📊 Resultado da Análise (FinBERT)")
                         
                         if "Positivo" in result['label']:
                             st.success(f"**🎯 Sentimento para {selected_ticker}:** {result['label']}")

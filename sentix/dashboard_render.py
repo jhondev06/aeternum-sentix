@@ -189,27 +189,64 @@ def analyze_sentiment_finbert(text: str, ticker: str) -> Dict[str, Any]:
             api_name="/predict"
         )
         
-        # Resultado vem como: (probabilities_dict, label_str, score_float)
+        # Debug: mostrar o formato recebido
+        print(f"[DEBUG] FinBERT raw result: {result}")
+        print(f"[DEBUG] Type: {type(result)}")
+        
+        # O Gradio pode retornar de diferentes formas
+        # Formato 1: (dict, str, float)
+        # Formato 2: tuple com gr.Label objects
+        
         probs_raw, label_raw, score_raw = result
         
-        # Mapear probabilidades para formato esperado
-        probs = {
-            "Positivo": round(probs_raw.get("Positivo", probs_raw.get("positive", 0)), 4),
-            "Negativo": round(probs_raw.get("Negativo", probs_raw.get("negative", 0)), 4),
-            "Neutro": round(probs_raw.get("Neutro", probs_raw.get("neutral", 0)), 4)
-        }
+        # Processar probabilidades - gr.Label retorna dict {"label": score}
+        probs = {"Positivo": 0.0, "Negativo": 0.0, "Neutro": 0.0}
         
-        # Normalizar label
-        label = label_raw
-        if "Positivo" in str(label_raw) or "positive" in str(label_raw).lower():
+        if isinstance(probs_raw, dict):
+            # Pode ser {"Positivo": 0.5, "Neutro": 0.3, "Negativo": 0.2}
+            # ou {"confidences": [{"label": "Neutro", "confidence": 0.89}, ...]}
+            if "confidences" in probs_raw:
+                for item in probs_raw["confidences"]:
+                    label_name = item.get("label", "")
+                    conf = item.get("confidence", 0)
+                    if "Positivo" in label_name or "positive" in label_name.lower():
+                        probs["Positivo"] = round(conf, 4)
+                    elif "Negativo" in label_name or "negative" in label_name.lower():
+                        probs["Negativo"] = round(conf, 4)
+                    elif "Neutro" in label_name or "neutral" in label_name.lower():
+                        probs["Neutro"] = round(conf, 4)
+            else:
+                # Formato direto
+                for key, val in probs_raw.items():
+                    if "Positivo" in key or "positive" in key.lower():
+                        probs["Positivo"] = round(float(val), 4)
+                    elif "Negativo" in key or "negative" in key.lower():
+                        probs["Negativo"] = round(float(val), 4)
+                    elif "Neutro" in key or "neutral" in key.lower():
+                        probs["Neutro"] = round(float(val), 4)
+        
+        # Processar label
+        label = "Neutro ➖"
+        if isinstance(label_raw, dict) and "label" in label_raw:
+            label_str = label_raw["label"]
+        else:
+            label_str = str(label_raw)
+        
+        if "Positivo" in label_str or "positive" in label_str.lower():
             label = "Positivo 📈"
-        elif "Negativo" in str(label_raw) or "negative" in str(label_raw).lower():
+        elif "Negativo" in label_str or "negative" in label_str.lower():
             label = "Negativo 📉"
         else:
             label = "Neutro ➖"
         
-        # Score
-        score = float(score_raw) if score_raw else 0.0
+        # Processar score
+        if isinstance(score_raw, dict) and "value" in score_raw:
+            score = float(score_raw["value"])
+        elif isinstance(score_raw, (int, float)):
+            score = float(score_raw)
+        else:
+            # Calcular score baseado nas probabilidades
+            score = probs["Positivo"] - probs["Negativo"]
         
         analysis_result = {
             "success": True,

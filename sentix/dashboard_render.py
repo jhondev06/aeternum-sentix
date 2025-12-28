@@ -143,84 +143,114 @@ st.markdown("""
 
 
 # =============================================================================
-# HuggingFace API Client & Persistence
+# Sentiment Analysis (Local - Keyword Based)
 # =============================================================================
 
-def analyze_sentiment_hf(text: str) -> Dict[str, Any]:
-    """
-    Call HuggingFace Space API for sentiment analysis and save to DB.
-    """
-    result = {}
-    error_msg = ""
-    
-    try:
-        # Use Gradio client
-        from gradio_client import Client
-        
-        client = Client(HF_SPACE_URL)
-        api_result = client.predict(
-            text=text,
-            api_name="/predict"
-        )
-        
-        # Result is (probabilities, label, score)
-        probs, label, score = api_result
-        
-        result = {
-            "success": True,
-            "label": label,
-            "score": float(score),
-            "probabilities": probs,
-            "source": "api"
-        }
-        
-    except Exception as e:
-        error_msg = str(e)
-        st.warning(f"⚠️ API Info: {e}")
-        
-        # Fallback: simple keyword-based sentiment
-        positive_words = ['alta', 'lucro', 'crescimento', 'sobe', 'positivo', 'recorde']
-        negative_words = ['queda', 'perda', 'crise', 'desaba', 'negativo', 'risco']
-        
-        text_lower = text.lower()
-        pos_count = sum(1 for w in positive_words if w in text_lower)
-        neg_count = sum(1 for w in negative_words if w in text_lower)
-        
-        fallback_probs = {"Positivo": 0.33, "Neutro": 0.34, "Negativo": 0.33}
-        fallback_label = "Neutro ➖"
-        fallback_score = 0.0
-        
-        if pos_count > neg_count:
-            fallback_label, fallback_score = "Positivo 📈", 0.5
-            fallback_probs = {"Positivo": 0.6, "Neutro": 0.3, "Negativo": 0.1}
-        elif neg_count > pos_count:
-            fallback_label, fallback_score = "Negativo 📉", -0.5
-            fallback_probs = {"Positivo": 0.1, "Neutro": 0.3, "Negativo": 0.6}
-            
-        result = {
-            "success": True, # Still assume success for UI 
-            "label": fallback_label,
-            "score": fallback_score,
-            "probabilities": fallback_probs,
-            "source": "fallback",
-            "error": error_msg
-        }
+# Dicionário robusto de palavras-chave financeiras
+POSITIVE_KEYWORDS = [
+    'alta', 'lucro', 'crescimento', 'sobe', 'positivo', 'recorde', 'valorização',
+    'ganho', 'avanço', 'otimismo', 'recuperação', 'forte', 'supera', 'bom',
+    'dividendo', 'extraordinário', 'expansão', 'sucesso', 'melhora', 'dispara',
+    'boom', 'aquecido', 'favorável', 'benefício', 'oportunidade', 'aumento',
+    'alta histórica', 'máxima', 'excelente', 'robusto', 'sólido'
+]
 
+NEGATIVE_KEYWORDS = [
+    'queda', 'perda', 'crise', 'desaba', 'negativo', 'risco', 'baixa',
+    'prejuízo', 'retração', 'pessimismo', 'fraco', 'problema', 'dívida',
+    'inflação', 'juros', 'recessão', 'colapso', 'declínio', 'falência',
+    'default', 'calote', 'escândalo', 'investigação', 'multa', 'tombo',
+    'derrocada', 'despenca', 'afunda', 'mínima', 'redução', 'corte'
+]
+
+# Lista de Ativos Brasileiros Populares para Recomendação
+RECOMMENDED_ASSETS = {
+    "Ações": [
+        ("PETR4.SA", "Petrobras PN", "Energia/Petróleo"),
+        ("VALE3.SA", "Vale ON", "Mineração"),
+        ("ITUB4.SA", "Itaú Unibanco PN", "Bancos"),
+        ("BBDC4.SA", "Bradesco PN", "Bancos"),
+        ("ABEV3.SA", "Ambev ON", "Bebidas"),
+        ("WEGE3.SA", "WEG ON", "Industrial"),
+        ("RENT3.SA", "Localiza ON", "Aluguel de Carros"),
+        ("MGLU3.SA", "Magazine Luiza ON", "Varejo"),
+        ("BBAS3.SA", "Banco do Brasil ON", "Bancos"),
+        ("B3SA3.SA", "B3 ON", "Bolsa de Valores"),
+    ],
+    "ETFs": [
+        ("BOVA11.SA", "iShares Ibovespa", "Índice Bovespa"),
+        ("SMAL11.SA", "iShares Small Cap", "Small Caps"),
+        ("IVVB11.SA", "iShares S&P 500", "EUA"),
+    ],
+    "FIIs": [
+        ("HGLG11.SA", "CSHG Logística", "Logística"),
+        ("MXRF11.SA", "Maxi Renda", "Papéis"),
+        ("XPLG11.SA", "XP Log", "Logística"),
+    ]
+}
+
+def analyze_sentiment_local(text: str, ticker: str = "MANUAL") -> Dict[str, Any]:
+    """
+    Análise de sentimento local usando keywords financeiros.
+    Funciona 100% offline, sem depender de APIs externas.
+    """
+    text_lower = text.lower()
+    
+    # Contar ocorrências
+    pos_count = sum(1 for word in POSITIVE_KEYWORDS if word in text_lower)
+    neg_count = sum(1 for word in NEGATIVE_KEYWORDS if word in text_lower)
+    total = pos_count + neg_count + 1  # +1 para evitar divisão por zero
+    
+    # Calcular probabilidades
+    pos_prob = min(0.95, pos_count / total + 0.1) if pos_count > 0 else 0.15
+    neg_prob = min(0.95, neg_count / total + 0.1) if neg_count > 0 else 0.15
+    neu_prob = max(0.05, 1 - pos_prob - neg_prob)
+    
+    # Normalizar para somar 1
+    total_prob = pos_prob + neg_prob + neu_prob
+    pos_prob /= total_prob
+    neg_prob /= total_prob
+    neu_prob /= total_prob
+    
+    # Determinar label
+    if pos_count > neg_count:
+        label = "Positivo 📈"
+        score = pos_prob
+    elif neg_count > pos_count:
+        label = "Negativo 📉"
+        score = -neg_prob
+    else:
+        label = "Neutro ➖"
+        score = 0.0
+    
+    result = {
+        "success": True,
+        "label": label,
+        "score": round(score, 4),
+        "probabilities": {
+            "Positivo": round(pos_prob, 4),
+            "Negativo": round(neg_prob, 4),
+            "Neutro": round(neu_prob, 4)
+        },
+        "source": "local_analysis",
+        "keywords_found": {
+            "positive": pos_count,
+            "negative": neg_count
+        }
+    }
+    
     # Save to Database if available
     if DB_AVAILABLE:
         try:
-            # Create a simple unique ID based on timestamp
             article_id = f"manual_{int(datetime.now().timestamp())}"
-            
-            # Map probabilities to flat columns
             p = result["probabilities"]
             
             df_new = pd.DataFrame([{
                 "id": article_id,
-                "ticker": "MANUAL", # Tag as manual entry
+                "ticker": ticker,
                 "source": "dashboard_manual",
                 "published_at": datetime.utcnow().isoformat(),
-                "title": text[:50] + "...",
+                "title": text[:50] + "..." if len(text) > 50 else text,
                 "body": text,
                 "url": "manual_entry",
                 "lang": "pt",
@@ -231,12 +261,11 @@ def analyze_sentiment_hf(text: str) -> Dict[str, Any]:
             }])
             
             save_articles(df_new)
-            st.toast("✅ Salvo no Banco de Dados!")
+            st.toast("✅ Análise salva no banco de dados!")
             
         except Exception as e:
             print(f"Failed to save to DB: {e}")
-            st.error(f"Erro ao salvar no banco: {e}")
-
+    
     return result
 
 
@@ -324,7 +353,49 @@ tab1, tab2, tab3 = st.tabs(["🔍 Analisar Texto", "📈 Dashboard", "ℹ️ Sob
 # Tab 1: Text Analysis
 # =============================================================================
 with tab1:
-    st.header("Análise de Sentimento em Tempo Real")
+    st.header("📊 Análise de Sentimento por Ativo")
+    
+    # =========================================================================
+    # STEP 1: Selecionar Ativo (OBRIGATÓRIO)
+    # =========================================================================
+    st.subheader("1️⃣ Selecione o Ativo para Análise")
+    
+    col_cat, col_asset = st.columns(2)
+    
+    with col_cat:
+        # Seletor de categoria
+        category = st.selectbox(
+            "📁 Categoria:",
+            list(RECOMMENDED_ASSETS.keys()),
+            key="category_select"
+        )
+    
+    with col_asset:
+        # Seletor de ativo baseado na categoria
+        assets_in_category = RECOMMENDED_ASSETS[category]
+        asset_options = [f"{t[0]} - {t[1]}" for t in assets_in_category]
+        
+        selected_asset_str = st.selectbox(
+            "💰 Ativo:",
+            asset_options,
+            key="asset_select"
+        )
+        
+        # Extrair apenas o ticker
+        selected_ticker = selected_asset_str.split(" - ")[0] if selected_asset_str else None
+    
+    # Mostrar info do ativo selecionado
+    if selected_ticker:
+        asset_info = next((t for t in assets_in_category if t[0] == selected_ticker), None)
+        if asset_info:
+            st.success(f"✅ **Ativo Selecionado:** {asset_info[0]} | {asset_info[1]} | Setor: {asset_info[2]}")
+    
+    st.markdown("---")
+    
+    # =========================================================================
+    # STEP 2: Analisar Notícia
+    # =========================================================================
+    st.subheader("2️⃣ Cole a Notícia sobre o Ativo")
     
     col1, col2 = st.columns([2, 1])
     
@@ -333,48 +404,80 @@ with tab1:
         default_text = st.session_state.get('example_text', "")
         
         text_input = st.text_area(
-            "Digite ou cole uma notícia financeira:",
+            f"📰 Notícia sobre **{selected_ticker}**:",
             value=default_text,
             height=150,
-            placeholder="Ex: Petrobras anuncia lucro recorde no terceiro trimestre..."
+            placeholder=f"Cole aqui uma notícia sobre {selected_ticker}..."
         )
         
         # Check for auto-run trigger
         auto_run = st.session_state.get('run_analysis', False)
         
-        if st.button("🔍 Analisar Sentimento", type="primary") or (auto_run and text_input):
+        if st.button("🔍 ANALISAR SENTIMENTO", type="primary", use_container_width=True) or (auto_run and text_input):
             # Reset trigger
             st.session_state['run_analysis'] = False
+            st.session_state['example_text'] = ""
             
-            if text_input.strip():
-                with st.spinner("Analisando..."):
-                    result = analyze_sentiment_hf(text_input)
+            if not selected_ticker:
+                st.error("❌ Selecione um ativo primeiro!")
+            elif not text_input.strip():
+                st.warning("⚠️ Digite ou cole uma notícia para analisar.")
+            else:
+                with st.spinner(f"Analisando sentimento para {selected_ticker}..."):
+                    result = analyze_sentiment_local(text_input, selected_ticker)
                     
                     if result["success"]:
-                        st.success(f"**Sentimento:** {result['label']}")
+                        # Box com resultado
+                        st.markdown("### 📊 Resultado da Análise")
                         
-                        col_a, col_b, col_c = st.columns(3)
+                        # Determinar cor baseado no sentimento
+                        if "Positivo" in result['label']:
+                            st.success(f"**🎯 Sentimento para {selected_ticker}:** {result['label']}")
+                        elif "Negativo" in result['label']:
+                            st.error(f"**🎯 Sentimento para {selected_ticker}:** {result['label']}")
+                        else:
+                            st.info(f"**🎯 Sentimento para {selected_ticker}:** {result['label']}")
+                        
+                        col_a, col_b, col_c, col_d = st.columns(4)
                         with col_a:
                             st.metric("Score", f"{result['score']:.3f}")
                         with col_b:
-                            st.metric("Positivo", f"{result['probabilities'].get('Positivo', 0):.1%}")
+                            st.metric("📈 Positivo", f"{result['probabilities'].get('Positivo', 0):.1%}")
                         with col_c:
-                            st.metric("Negativo", f"{result['probabilities'].get('Negativo', 0):.1%}")
-            else:
-                st.warning("Digite um texto para analisar.")
+                            st.metric("📉 Negativo", f"{result['probabilities'].get('Negativo', 0):.1%}")
+                        with col_d:
+                            st.metric("➖ Neutro", f"{result['probabilities'].get('Neutro', 0):.1%}")
+                        
+                        # Mostrar keywords encontrados
+                        kw = result.get("keywords_found", {})
+                        if kw.get("positive", 0) > 0 or kw.get("negative", 0) > 0:
+                            st.caption(f"🔎 Keywords detectadas: +{kw.get('positive', 0)} positivas, -{kw.get('negative', 0)} negativas")
+                        
+                        st.success(f"✅ Análise salva! Vá na aba 'Dashboard' para ver o histórico de {selected_ticker}.")
     
     with col2:
-        st.markdown("### 📝 Exemplos")
+        st.markdown("### 📝 Exemplos de Notícias")
+        st.caption("Clique para usar como exemplo:")
         
-        examples = [
-            "Petrobras anuncia dividendo extraordinário",
-            "Inflação acelera e Banco Central eleva juros",
-            "Ibovespa fecha estável aguardando Fed"
+        # Exemplos vinculados a ativos específicos
+        examples_with_assets = [
+            ("PETR4.SA", "Petrobras anuncia dividendo extraordinário de R$ 15 bilhões"),
+            ("VALE3.SA", "Vale reporta queda de 20% na produção de minério"),
+            ("ITUB4.SA", "Itaú lucra R$ 10 bilhões e supera expectativas"),
+            ("BBDC4.SA", "Bradesco enfrenta crise com inadimplência recorde"),
+            ("ABEV3.SA", "Ambev tem crescimento robusto nas vendas"),
         ]
         
-        for ex in examples:
-            if st.button(ex, key=ex):
-                st.session_state['example_text'] = ex
+        for ticker, text in examples_with_assets:
+            if st.button(f"📌 {ticker}", key=f"ex_{ticker}", help=text):
+                # Encontrar categoria e setar o ativo
+                for cat, assets in RECOMMENDED_ASSETS.items():
+                    for t in assets:
+                        if t[0] == ticker:
+                            st.session_state['category_select'] = cat
+                            st.session_state['asset_select'] = f"{t[0]} - {t[1]}"
+                            break
+                st.session_state['example_text'] = text
                 st.session_state['run_analysis'] = True
                 st.rerun()
 

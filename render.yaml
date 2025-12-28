@@ -1,45 +1,40 @@
-# Render Blueprint - Sentix Dashboard
-# Deploy configuration for render.com
-
 services:
   # ==========================================================================
-  # Streamlit Dashboard (Free Tier Compatible)
+  # Backend: Aeternum Sentix API (FastAPI)
   # ==========================================================================
   - type: web
-    name: sentix-dashboard
+    name: sentix-backend
     env: python
     region: oregon
     plan: free
     branch: main
     rootDir: sentix
     buildCommand: pip install -r requirements-render.txt
-    startCommand: streamlit run dashboard_render.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
-    healthCheckPath: /_stcore/health
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.4"
-      - key: HF_SPACE_URL
-        value: "https://your-username-sentix-finbert.hf.space"
-      - key: SENTIX_ENV
-        value: "production"
-
-  # ==========================================================================
-  # FastAPI Light (Optional - Free Tier)
-  # ==========================================================================
-  - type: web
-    name: sentix-api
-    env: python
-    region: oregon
-    plan: free
-    branch: main
-    rootDir: sentix
-    buildCommand: pip install -r requirements-render.txt
-    startCommand: uvicorn api.app_light:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn api.app:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.4"
+      - key: SECRET_KEY
+        generateValue: true
       - key: HF_SPACE_URL
         value: "https://your-username-sentix-finbert.hf.space"
-      - key: SENTIX_ENV
-        value: "production"
+
+  # ==========================================================================
+  # Frontend: Next.js Dashboard
+  # ==========================================================================
+  - type: web
+    name: sentix-frontend
+    env: node
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: sentix-backend
+          property: url

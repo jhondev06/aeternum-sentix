@@ -360,28 +360,49 @@ with tab1:
     # =========================================================================
     st.subheader("1️⃣ Selecione o Ativo para Análise")
     
+    # Verificar se há preset de exemplo
+    preset_category = st.session_state.get('preset_category', None)
+    preset_ticker = st.session_state.get('preset_ticker', None)
+    
+    # Lista de categorias
+    categories_list = list(RECOMMENDED_ASSETS.keys())
+    
+    # Calcular index default para categoria
+    cat_default_idx = 0
+    if preset_category and preset_category in categories_list:
+        cat_default_idx = categories_list.index(preset_category)
+        # Limpar preset após uso
+        st.session_state['preset_category'] = None
+    
     col_cat, col_asset = st.columns(2)
     
     with col_cat:
-        # Seletor de categoria
         category = st.selectbox(
             "📁 Categoria:",
-            list(RECOMMENDED_ASSETS.keys()),
-            key="category_select"
+            categories_list,
+            index=cat_default_idx
         )
     
     with col_asset:
-        # Seletor de ativo baseado na categoria
         assets_in_category = RECOMMENDED_ASSETS[category]
         asset_options = [f"{t[0]} - {t[1]}" for t in assets_in_category]
+        
+        # Calcular index default para ativo
+        asset_default_idx = 0
+        if preset_ticker:
+            for idx, opt in enumerate(asset_options):
+                if opt.startswith(preset_ticker):
+                    asset_default_idx = idx
+                    break
+            # Limpar preset após uso
+            st.session_state['preset_ticker'] = None
         
         selected_asset_str = st.selectbox(
             "💰 Ativo:",
             asset_options,
-            key="asset_select"
+            index=asset_default_idx
         )
         
-        # Extrair apenas o ticker
         selected_ticker = selected_asset_str.split(" - ")[0] if selected_asset_str else None
     
     # Mostrar info do ativo selecionado
@@ -400,7 +421,6 @@ with tab1:
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # Check for auto-fill from examples
         default_text = st.session_state.get('example_text', "")
         
         text_input = st.text_area(
@@ -410,11 +430,9 @@ with tab1:
             placeholder=f"Cole aqui uma notícia sobre {selected_ticker}..."
         )
         
-        # Check for auto-run trigger
         auto_run = st.session_state.get('run_analysis', False)
         
         if st.button("🔍 ANALISAR SENTIMENTO", type="primary", use_container_width=True) or (auto_run and text_input):
-            # Reset trigger
             st.session_state['run_analysis'] = False
             st.session_state['example_text'] = ""
             
@@ -427,10 +445,8 @@ with tab1:
                     result = analyze_sentiment_local(text_input, selected_ticker)
                     
                     if result["success"]:
-                        # Box com resultado
                         st.markdown("### 📊 Resultado da Análise")
                         
-                        # Determinar cor baseado no sentimento
                         if "Positivo" in result['label']:
                             st.success(f"**🎯 Sentimento para {selected_ticker}:** {result['label']}")
                         elif "Negativo" in result['label']:
@@ -448,35 +464,28 @@ with tab1:
                         with col_d:
                             st.metric("➖ Neutro", f"{result['probabilities'].get('Neutro', 0):.1%}")
                         
-                        # Mostrar keywords encontrados
                         kw = result.get("keywords_found", {})
                         if kw.get("positive", 0) > 0 or kw.get("negative", 0) > 0:
-                            st.caption(f"🔎 Keywords detectadas: +{kw.get('positive', 0)} positivas, -{kw.get('negative', 0)} negativas")
+                            st.caption(f"🔎 Keywords: +{kw.get('positive', 0)} positivas, -{kw.get('negative', 0)} negativas")
                         
                         st.success(f"✅ Análise salva! Vá na aba 'Dashboard' para ver o histórico de {selected_ticker}.")
     
     with col2:
         st.markdown("### 📝 Exemplos de Notícias")
-        st.caption("Clique para usar como exemplo:")
+        st.caption("Clique para preencher automaticamente:")
         
-        # Exemplos vinculados a ativos específicos
         examples_with_assets = [
-            ("PETR4.SA", "Petrobras anuncia dividendo extraordinário de R$ 15 bilhões"),
-            ("VALE3.SA", "Vale reporta queda de 20% na produção de minério"),
-            ("ITUB4.SA", "Itaú lucra R$ 10 bilhões e supera expectativas"),
-            ("BBDC4.SA", "Bradesco enfrenta crise com inadimplência recorde"),
-            ("ABEV3.SA", "Ambev tem crescimento robusto nas vendas"),
+            ("PETR4.SA", "Ações", "Petrobras anuncia dividendo extraordinário de R$ 15 bilhões"),
+            ("VALE3.SA", "Ações", "Vale reporta queda de 20% na produção de minério"),
+            ("ITUB4.SA", "Ações", "Itaú lucra R$ 10 bilhões e supera expectativas"),
+            ("BBDC4.SA", "Ações", "Bradesco enfrenta crise com inadimplência recorde"),
+            ("ABEV3.SA", "Ações", "Ambev tem crescimento robusto nas vendas"),
         ]
         
-        for ticker, text in examples_with_assets:
+        for ticker, cat, text in examples_with_assets:
             if st.button(f"📌 {ticker}", key=f"ex_{ticker}", help=text):
-                # Encontrar categoria e setar o ativo
-                for cat, assets in RECOMMENDED_ASSETS.items():
-                    for t in assets:
-                        if t[0] == ticker:
-                            st.session_state['category_select'] = cat
-                            st.session_state['asset_select'] = f"{t[0]} - {t[1]}"
-                            break
+                st.session_state['preset_category'] = cat
+                st.session_state['preset_ticker'] = ticker
                 st.session_state['example_text'] = text
                 st.session_state['run_analysis'] = True
                 st.rerun()
